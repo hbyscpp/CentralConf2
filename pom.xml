@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<groupId>com.seaky</groupId>
+	<artifactId>CentralConf</artifactId>
+	<version>1.0.0-SNAPSHOT</version>
+	<packaging>pom</packaging>
+	<modules>
+		<module>centralconf-manager</module>
+		<module>centralconf-core</module>
+		<module>centralconf-springboot-integration</module>
+	</modules>
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>com.seaky</groupId>
+				<artifactId>centralconf-core</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-dependencies</artifactId>
+				<version>1.3.3.RELEASE</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+			<dependency>
+				<groupId>com.fasterxml.jackson.core</groupId>
+				<artifactId>jackson-core</artifactId>
+				<version>2.7.2</version>
+			</dependency>
+			<dependency>
+				<groupId>org.mousio</groupId>
+				<artifactId>etcd4j</artifactId>
+				<version>2.11.0</version>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+	<distributionManagement>
+		<snapshotRepository>
+			<id>yt-snapshot</id>
+			<name>snapshot</name>
+			<url>http://10.192.40.52:8081/nexus/content/repositories/snapshots/</url>
+		</snapshotRepository>
+		<repository>
+			<id>yt-releases</id>
+			<name>releases</name>
+			<url>http://10.192.40.52:8081/nexus/content/repositories/releases/</url>
+		</repository>
+	</distributionManagement>
+</project>
