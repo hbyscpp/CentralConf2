@@ -43,44 +43,9 @@ public class EtcdCentralConfigClient extends EtcdConfig implements CentralConfig
    * @Description: 获得一应用下的所有公共配置 @param TODO @return List<ConfigItem> @throws
    */
   public List<ConfigItem> getCommonItem(String app) {
-    List<ConfigItem> commonConfigItems = new ArrayList<ConfigItem>();
-    if (PathUtil.isContainPathSeparator(app))
-      throw new CentralConfigException("app can not contain / or \\");
 
-    try {
-      EtcdResponsePromise<EtcdKeysResponse> response =
-          client.getDir(baseConfigPath + "/" + app + "/" + BaseConstant._COMMON).sorted()
-              .timeout(5, TimeUnit.SECONDS).send();
-      EtcdKeysResponse allkeys = response.get();
-      List<EtcdNode> allNodes = allkeys.node.nodes;
-      if (allNodes == null)
-        return null;
-      for (EtcdNode node : allNodes) {
-        ConfigItem item = new ConfigItem();
-        item.setApp(app);
-        item.setEnv(BaseConstant._COMMON);
-        item.setKey(PathUtil.lastPath(node.key));
-        ConfigValue cv = mapper.readValue(node.value, ConfigValue.class);
-        if (cv != null) {
-          item.setDesc(cv.getDesc());
-          item.setValue(cv.getValue());
-        }
-        commonConfigItems.add(item);
-      }
-      return commonConfigItems;
-    } catch (JsonProcessingException e) {
-      throw new CentralConfigException(e);
-    } catch (IOException e) {
-      throw new CentralConfigException(e);
-    } catch (EtcdException e) {
-      if (e.errorCode == 100)
-        return null;
-      throw new CentralConfigException(e);
-    } catch (EtcdAuthenticationException e) {
-      throw new CentralConfigException(e);
-    } catch (TimeoutException e) {
-      throw new CentralConfigException(e);
-    }
+    return new ArrayList<ConfigItem>(getAllCommonConfigAsMap(app).values());
+
   }
 
 
@@ -173,50 +138,9 @@ public class EtcdCentralConfigClient extends EtcdConfig implements CentralConfig
    * @Description: 获得原始的配置项内容 没有公共配置与资源的详细 @param TODO @return List<ConfigItem> @throws
    */
   public List<ConfigItem> getOriAllItem(String app, String env) {
-    if (PathUtil.isContainPathSeparator(app))
-      throw new CentralConfigException("app can not contain / or \\");
 
-    if (PathUtil.isContainPathSeparator(env))
-      throw new CentralConfigException("env can not contain / or \\");
-    try {
-      EtcdResponsePromise<EtcdKeysResponse> response =
-          client.getDir(baseConfigPath + "/" + app + "/" + env).sorted().send();
-      EtcdKeysResponse allkeys = response.get();
-      List<EtcdNode> allNodes = allkeys.node.nodes;
-      if (allNodes == null)
-        return null;
-      List<ConfigItem> allOrigConfigItems = new ArrayList<ConfigItem>();
-      for (EtcdNode node : allNodes) {
-        String key = PathUtil.lastPath(node.key);
-        // 如果是公共资源，略过
-        if (key.startsWith(BaseConstant.PERFIX_RESOURCE)) {
-          continue;
-        }
-        ConfigItem item = new ConfigItem();
-        item.setApp(app);
-        item.setEnv(env);
-        item.setKey(key);
-        ConfigValue cv = mapper.readValue(node.value, ConfigValue.class);
-        if (cv != null) {
-          item.setDesc(cv.getDesc());
-          item.setValue(cv.getValue());
-        }
-        allOrigConfigItems.add(item);
-      }
-      return allOrigConfigItems;
-    } catch (JsonProcessingException e) {
-      throw new CentralConfigException(e);
-    } catch (IOException e) {
-      throw new CentralConfigException(e);
-    } catch (EtcdException e) {
-      if (e.errorCode == 100)
-        return null;
-      throw new CentralConfigException(e);
-    } catch (EtcdAuthenticationException e) {
-      throw new CentralConfigException(e);
-    } catch (TimeoutException e) {
-      throw new CentralConfigException(e);
-    }
+    return new ArrayList<ConfigItem>(getConfigAsMap(app, env).values());
+
   }
 
   /**
@@ -273,68 +197,170 @@ public class EtcdCentralConfigClient extends EtcdConfig implements CentralConfig
    */
   public List<ConfigItem> getAllItem(String app, String env) {
 
+
+
+    Map<String, ConfigItem> commonItems = this.getAllCommonConfigAsMap(app);
+    // 如果是公共配置环境 则直接取出
+    if (env.equals(BaseConstant._COMMON)) {
+      return new ArrayList<ConfigItem>(commonItems.values());
+    }
+
+    Map<String, ConfigItem> resItems = this.getAllResourceConfigAsMap(app, env);
+
+    Map<String, ConfigItem> oriItem = this.getConfigAsMap(app, env);
+
+    resItems.putAll(commonItems);
+    resItems.putAll(oriItem);
+
+    return new ArrayList<ConfigItem>(resItems.values());
+
+  }
+
+
+  private Map<String, ConfigItem> getConfigAsMap(String app, String env) {
+
     if (PathUtil.isContainPathSeparator(app))
       throw new CentralConfigException("app can not contain / or \\");
 
     if (PathUtil.isContainPathSeparator(env))
       throw new CentralConfigException("env can not contain / or \\");
-
-
-    List<ConfigItem> commonItems = this.getCommonItem(app);
-    // 如果是公共配置环境 则直接取出
-    if (env.equals(BaseConstant._COMMON)) {
-      return commonItems;
-    }
-    // 增加公共配置
     Map<String, ConfigItem> itemsMap = new HashMap<String, ConfigItem>();
-    if (commonItems != null) {
-      for (ConfigItem item : commonItems) {
-        itemsMap.put(item.getKey(), item);
-      }
-    }
-
     try {
       EtcdResponsePromise<EtcdKeysResponse> response =
-          client.getDir(baseConfigPath + "/" + app + "/" + env).sorted().send();
+          client.getDir(baseConfigPath + "/" + app + "/" + env).sorted()
+              .timeout(5, TimeUnit.SECONDS).send();
       EtcdKeysResponse allkeys = response.get();
       List<EtcdNode> allNodes = allkeys.node.nodes;
       if (allNodes == null)
-        return null;
+        return itemsMap;
 
       for (EtcdNode node : allNodes) {
         String key = PathUtil.lastPath(node.key);
         // 如果是资源，则取出资源内容显示出来
-        if (key.startsWith(BaseConstant.PERFIX_RESOURCE)) {
-          List<ResourceItem> rscItemList =
-              this.getResourceItem(key.substring(key.indexOf(BaseConstant.PERFIX_RESOURCE) + 1));
-          for (ResourceItem rscItem : rscItemList) {
-            ConfigItem ci = new ConfigItem();
-            ci.setApp(app);
-            ci.setEnv(env);
-            ci.setKey(rscItem.getKey());
-            ci.setValue(rscItem.getValue());
-            ci.setDesc(rscItem.getDesc());
-            // allConfigItems.add(ci);
-            ConfigItem oldci = itemsMap.put(ci.getKey(), ci);
+        if (!key.startsWith(BaseConstant.PERFIX_RESOURCE)) {
+          // if (itemsMap.containsKey(key))
+          // throw new RuntimeException(key + " is duplicate");
+          ConfigItem item = new ConfigItem();
+          item.setApp(app);
+          item.setEnv(env);
+          item.setKey(key);
+          ConfigValue cv = mapper.readValue(node.value, ConfigValue.class);
+          if (cv != null) {
+            item.setDesc(cv.getDesc());
+            item.setValue(cv.getValue());
           }
-          continue;
+          itemsMap.put(key, item);
         }
+      }
+      return itemsMap;
+    } catch (
+
+    JsonProcessingException e) {
+      throw new CentralConfigException(e);
+    } catch (IOException e) {
+      throw new CentralConfigException(e);
+    } catch (EtcdException e) {
+      if (e.errorCode == 100)
+        return null;
+      throw new CentralConfigException(e);
+    } catch (EtcdAuthenticationException e) {
+      throw new CentralConfigException(e);
+    } catch (TimeoutException e) {
+      throw new CentralConfigException(e);
+    }
+
+  }
+
+  private Map<String, ConfigItem> getAllCommonConfigAsMap(String app) {
+
+    Map<String, ConfigItem> itemsMap = new HashMap<String, ConfigItem>();
+    if (PathUtil.isContainPathSeparator(app))
+      throw new CentralConfigException("app can not contain / or \\");
+
+    try {
+      EtcdResponsePromise<EtcdKeysResponse> response =
+          client.getDir(baseConfigPath + "/" + app + "/" + BaseConstant._COMMON).sorted()
+              .timeout(5, TimeUnit.SECONDS).send();
+      EtcdKeysResponse allkeys = response.get();
+      List<EtcdNode> allNodes = allkeys.node.nodes;
+      if (allNodes == null)
+        return itemsMap;
+      for (EtcdNode node : allNodes) {
+
         ConfigItem item = new ConfigItem();
         item.setApp(app);
-        item.setEnv(env);
-        item.setKey(key);
+        item.setEnv(BaseConstant._COMMON);
+        item.setKey(PathUtil.lastPath(node.key));
+        // if (itemsMap.containsKey(item.getKey()))
+        // throw new RuntimeException(item.getKey() + " is duplicate");
         ConfigValue cv = mapper.readValue(node.value, ConfigValue.class);
         if (cv != null) {
           item.setDesc(cv.getDesc());
           item.setValue(cv.getValue());
         }
-        ConfigItem oldci = itemsMap.put(item.getKey(), item);
-        if (oldci != null)
-          throw new RuntimeException(item.getKey() + " is duplicate");
+        itemsMap.put(item.getKey(), item);
       }
-      // TODO 支持环境标签
-      return new ArrayList<ConfigItem>(itemsMap.values());
+      return itemsMap;
+    } catch (JsonProcessingException e) {
+      throw new CentralConfigException(e);
+    } catch (IOException e) {
+      throw new CentralConfigException(e);
+    } catch (EtcdException e) {
+      if (e.errorCode == 100)
+        return null;
+      throw new CentralConfigException(e);
+    } catch (EtcdAuthenticationException e) {
+      throw new CentralConfigException(e);
+    } catch (TimeoutException e) {
+      throw new CentralConfigException(e);
+    }
 
+
+  }
+
+  private Map<String, ConfigItem> getAllResourceConfigAsMap(String app, String env) {
+
+    if (PathUtil.isContainPathSeparator(app))
+      throw new CentralConfigException("app can not contain / or \\");
+
+    if (PathUtil.isContainPathSeparator(env))
+      throw new CentralConfigException("env can not contain / or \\");
+    Map<String, ConfigItem> itemsMap = new HashMap<String, ConfigItem>();
+    try {
+      EtcdResponsePromise<EtcdKeysResponse> response =
+          client.getDir(baseConfigPath + "/" + app + "/" + env).sorted()
+              .timeout(5, TimeUnit.SECONDS).send();
+      EtcdKeysResponse allkeys = response.get();
+      List<EtcdNode> allNodes = allkeys.node.nodes;
+      if (allNodes == null)
+        return itemsMap;
+
+      for (EtcdNode node : allNodes) {
+        String key = PathUtil.lastPath(node.key);
+        // 如果是资源，则取出资源内容显示出来
+        if (key.startsWith(BaseConstant.PERFIX_RESOURCE)) {
+          List<ResourceItem> itemList =
+              this.getResourceItem(key.substring(key.indexOf(BaseConstant.PERFIX_RESOURCE) + 1));
+
+
+          if (itemList != null) {
+            for (ResourceItem ri : itemList) {
+              // if (itemsMap.containsKey(ri.getKey()))
+              // throw new RuntimeException(ri.getKey() + " is duplicate");
+              ConfigItem ci = new ConfigItem();
+              ci.setApp(app);
+              ci.setDesc(ri.getDesc());
+              ci.setEnv(env);
+              ci.setKey(ri.getKey());
+              ci.setValue(ri.getValue());
+              itemsMap.put(ci.getKey(), ci);
+            }
+
+          }
+
+        }
+      }
+      return itemsMap;
     } catch (JsonProcessingException e) {
       throw new CentralConfigException(e);
     } catch (IOException e) {
