@@ -29,7 +29,6 @@ import mousio.etcd4j.responses.EtcdKeysResponse.EtcdNode;
 
 public class EtcdCentralConfigClient extends EtcdConfig implements CentralConfigClient {
 
-
   public EtcdCentralConfigClient(String basePath, String urls) {
     super(basePath, urls);
   }
@@ -238,8 +237,8 @@ public class EtcdCentralConfigClient extends EtcdConfig implements CentralConfig
         String key = PathUtil.lastPath(node.key);
         // 如果是资源，则取出资源内容显示出来
         if (!key.startsWith(BaseConstant.PERFIX_RESOURCE)) {
-          // if (itemsMap.containsKey(key))
-          // throw new RuntimeException(key + " is duplicate");
+          if (itemsMap.containsKey(key))
+            logger.warn("{} is duplicate", key);
           ConfigItem item = new ConfigItem();
           item.setApp(app);
           item.setEnv(env);
@@ -261,7 +260,7 @@ public class EtcdCentralConfigClient extends EtcdConfig implements CentralConfig
       throw new CentralConfigException(e);
     } catch (EtcdException e) {
       if (e.errorCode == 100)
-        return null;
+        return itemsMap;
       throw new CentralConfigException(e);
     } catch (EtcdAuthenticationException e) {
       throw new CentralConfigException(e);
@@ -291,8 +290,8 @@ public class EtcdCentralConfigClient extends EtcdConfig implements CentralConfig
         item.setApp(app);
         item.setEnv(BaseConstant._COMMON);
         item.setKey(PathUtil.lastPath(node.key));
-        // if (itemsMap.containsKey(item.getKey()))
-        // throw new RuntimeException(item.getKey() + " is duplicate");
+        if (itemsMap.containsKey(item.getKey()))
+          logger.warn("{} is duplicate", item.getKey());
         ConfigValue cv = mapper.readValue(node.value, ConfigValue.class);
         if (cv != null) {
           item.setDesc(cv.getDesc());
@@ -307,7 +306,7 @@ public class EtcdCentralConfigClient extends EtcdConfig implements CentralConfig
       throw new CentralConfigException(e);
     } catch (EtcdException e) {
       if (e.errorCode == 100)
-        return null;
+        return itemsMap;
       throw new CentralConfigException(e);
     } catch (EtcdAuthenticationException e) {
       throw new CentralConfigException(e);
@@ -345,8 +344,8 @@ public class EtcdCentralConfigClient extends EtcdConfig implements CentralConfig
 
           if (itemList != null) {
             for (ResourceItem ri : itemList) {
-              // if (itemsMap.containsKey(ri.getKey()))
-              // throw new RuntimeException(ri.getKey() + " is duplicate");
+              if (itemsMap.containsKey(ri.getKey()))
+                logger.warn("{} is duplicate", ri.getKey());
               ConfigItem ci = new ConfigItem();
               ci.setApp(app);
               ci.setDesc(ri.getDesc());
@@ -367,7 +366,7 @@ public class EtcdCentralConfigClient extends EtcdConfig implements CentralConfig
       throw new CentralConfigException(e);
     } catch (EtcdException e) {
       if (e.errorCode == 100)
-        return null;
+        return itemsMap;
       throw new CentralConfigException(e);
     } catch (EtcdAuthenticationException e) {
       throw new CentralConfigException(e);
